@@ -31,49 +31,26 @@ type context struct {
 }
 
 // NewServer creates and returns a new server. The 'namespace' param is the redis namespace to use. The hostPort param is the address to bind on to expose the API.
-func NewServer(namespace string, pool *redis.Pool, hostPort string) *Server {
-	router := web.New(context{})
+func NewServer(namespace string, pool *redis.Pool, hostPort string, serverOptions ...opts) *Server {
 	server := &Server{
 		namespace: namespace,
 		pool:      pool,
 		client:    work.NewClient(namespace, pool),
 		hostPort:  hostPort,
-		server:    manners.NewWithServer(&http.Server{Addr: hostPort, Handler: router}),
-		router:    router,
+		router:    web.New(context{}),
 	}
 
-	router.Middleware(func(c *context, rw web.ResponseWriter, r *web.Request, next web.NextMiddlewareFunc) {
+	for _, serverOption := range serverOptions {
+		server = serverOption(server)
+	}
+
+	server.router.Middleware(func(c *context, rw web.ResponseWriter, r *web.Request, next web.NextMiddlewareFunc) {
 		c.Server = server
 		next(rw, r)
 	})
-	router.Middleware(func(rw web.ResponseWriter, r *web.Request, next web.NextMiddlewareFunc) {
-		rw.Header().Set("Content-Type", "application/json; charset=utf-8")
-		next(rw, r)
-	})
-	router.Get("/ping", (*context).ping)
-	router.Get("/queues", (*context).queues)
-	router.Get("/worker_pools", (*context).workerPools)
-	router.Get("/busy_workers", (*context).busyWorkers)
-	router.Get("/retry_jobs", (*context).retryJobs)
-	router.Get("/scheduled_jobs", (*context).scheduledJobs)
-	router.Get("/dead_jobs", (*context).deadJobs)
-	router.Post("/delete_dead_job/:died_at:\\d.*/:job_id", (*context).deleteDeadJob)
-	router.Post("/retry_dead_job/:died_at:\\d.*/:job_id", (*context).retryDeadJob)
-	router.Post("/delete_all_dead_jobs", (*context).deleteAllDeadJobs)
-	router.Post("/retry_all_dead_jobs", (*context).retryAllDeadJobs)
 
-	//
-	// Build the HTML page:
-	//
-	assetRouter := router.Subrouter(context{}, "")
-	assetRouter.Get("/", func(c *context, rw web.ResponseWriter, req *web.Request) {
-		rw.Header().Set("Content-Type", "text/html; charset=utf-8")
-		rw.Write(mustAsset("index.html"))
-	})
-	assetRouter.Get("/work.js", func(c *context, rw web.ResponseWriter, req *web.Request) {
-		rw.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-		rw.Write(mustAsset("work.js"))
-	})
+	server.router = setupRoutes(server.router)
+	server.server = manners.NewWithServer(&http.Server{Addr: hostPort, Handler: server.router})
 
 	return server
 }
@@ -99,6 +76,10 @@ func (w *Server) Start() {
 func (w *Server) Stop() {
 	w.server.Close()
 	w.wg.Wait()
+}
+
+func (w *Server) Router() *web.Router {
+	return w.router
 }
 
 func (c *context) ping(rw web.ResponseWriter, r *web.Request) {

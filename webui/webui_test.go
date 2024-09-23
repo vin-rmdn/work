@@ -13,6 +13,7 @@ import (
 	"github.com/gojek/work"
 	"github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWebUIStartStop(t *testing.T) {
@@ -31,12 +32,55 @@ func TestWebUIPing(t *testing.T) {
 	pool := newTestPool(t)
 	ns := "work"
 	cleanKeyspace(ns, pool)
-	s := NewServer(ns, pool, ":6666")
 
-	recorder := httptest.NewRecorder()
-	request, _ := http.NewRequest("GET", "/ping", nil)
-	s.router.ServeHTTP(recorder, request)
-	assert.Equal(t, 200, recorder.Code)
+	t.Run("with inbuilt server", func(t *testing.T) {
+		t.Run("vanilla server", func(t *testing.T) {
+			s := NewServer(ns, pool, ":6666")
+
+			recorder := httptest.NewRecorder()
+			request, _ := http.NewRequest("GET", "/ping", nil)
+			s.router.ServeHTTP(recorder, request)
+			assert.Equal(t, 200, recorder.Code)
+		})
+
+		t.Run("with prefix", func(t *testing.T) {
+			s := NewServer(ns, pool, ":6666", WithPrefix("/api"))
+
+			recorder := httptest.NewRecorder()
+			request, _ := http.NewRequest("GET", "/api/ping", nil)
+			s.router.ServeHTTP(recorder, request)
+			assert.Equal(t, 200, recorder.Code)
+		})
+	})
+
+	t.Run("with external server", func(t *testing.T) {
+		t.Run("vanilla server", func(t *testing.T) {
+			unstartedWorkerUI := NewServer(ns, pool, ":6666")
+			testServer := httptest.NewServer(unstartedWorkerUI.Router())
+
+			request, err := http.NewRequest("GET", fmt.Sprintf("%s/ping", testServer.URL), nil)
+			require.NoError(t, err)
+
+			response, err := http.DefaultClient.Do(request)
+			require.NoError(t, err)
+
+			assert.Equal(t, http.StatusOK, response.StatusCode)
+		})
+
+		t.Run("with prefix", func(t *testing.T) {
+			unstartedWorkerUI := NewServer(ns, pool, ":6666", WithPrefix("/api"))
+			testServer := httptest.NewServer(unstartedWorkerUI.Router())
+
+			request, err := http.NewRequest("GET", fmt.Sprintf("%s/api/ping", testServer.URL), nil)
+			require.NoError(t, err)
+
+			response, err := http.DefaultClient.Do(request)
+			require.NoError(t, err)
+
+			assert.Equal(t, http.StatusOK, response.StatusCode)
+		})
+
+	})
 }
 
 func TestWebUIQueues(t *testing.T) {
