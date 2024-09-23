@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gojek/work"
 	"github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/suite"
+	"github.com/vin-rmdn/work"
 )
 
 type TestWebUIHandlerSuite struct {

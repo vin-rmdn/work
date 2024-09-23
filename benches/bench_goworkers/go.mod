@@ -1,4 +1,4 @@
-module github.com/gojek/work/benches/bench_goworkers
+module github.com/vin-rmdn/work/benches/bench_goworkers
 
 go 1.18
 

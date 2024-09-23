@@ -19,10 +19,10 @@ gojek/work lets you enqueue and processes background jobs in Go. Jobs are durabl
 #### Usage
 
 The module is backward compatible with github.com/gocraft/work. To switch to this module, simply replace
-`github.com/gocraft/work` with `github.com/gojek/work` in Go source files and run `go get`:
+`github.com/gocraft/work` with `github.com/vin-rmdn/work` in Go source files and run `go get`:
 
 ```shell
-go get github.com/gojek/work
+go get github.com/vin-rmdn/work
 ```
 
 #### Refresh Node.js dependencies for WebUI ([`99f237a`][commit-99f237a]). 
@@ -45,17 +45,17 @@ in-progress queue was lost.
 #### Expose lock count & max concurrency for each job ([#2][pull-2], [#17][pull-17])
 
 Added to the queue info accessible from 
-[`work.Client.Queues()`](https://pkg.go.dev/github.com/gojek/work#Client.Queues). Useful for alerting when lock count is consistently equal to the max 
+[`work.Client.Queues()`](https://pkg.go.dev/github.com/vin-rmdn/work#Client.Queues). Useful for alerting when lock count is consistently equal to the max 
 concurrency possibly indicating that stale lock count is resulting in jobs not being picked up.
 
-For the cleanup to be thorough, [`work.(*WorkerPool).Stop`](https://pkg.go.dev/github.com/gojek/work#WorkerPool.Stop) 
+For the cleanup to be thorough, [`work.(*WorkerPool).Stop`](https://pkg.go.dev/github.com/vin-rmdn/work#WorkerPool.Stop) 
 would need to be called on each worker pool instance.
 
 The same info is also displayed on the queues page in WebUI ([#17][pull-17]).
 
 #### Worker pool started check ([#15][pull-15])
 
-Expose [`work.(*WorkerPool).Started`](https://pkg.go.dev/github.com/gojek/work#WorkerPool.Started) which can be used to check if the worker pool has been
+Expose [`work.(*WorkerPool).Started`](https://pkg.go.dev/github.com/vin-rmdn/work#WorkerPool.Started) which can be used to check if the worker pool has been
 started and is running.
 
 ---
@@ -69,7 +69,7 @@ package main
 
 import (
 	"github.com/gomodule/redigo/redis"
-	"github.com/gojek/work"
+	"github.com/vin-rmdn/work"
 )
 
 // Make a redis pool
@@ -105,7 +105,7 @@ package main
 
 import (
 	"github.com/gomodule/redigo/redis"
-	"github.com/gojek/work"
+	"github.com/vin-rmdn/work"
 	"os"
 	"os/signal"
 )
@@ -293,8 +293,8 @@ The web UI provides a view to view the state of your gojek/work cluster, inspect
 
 Building an installing the binary:
 ```bash
-go get github.com/gojek/work/cmd/workwebui
-go install github.com/gojek/work/cmd/workwebui
+go get github.com/vin-rmdn/work/cmd/workwebui
+go install github.com/vin-rmdn/work/cmd/workwebui
 ```
 
 Then, you can run it:
@@ -424,12 +424,12 @@ These packages were developed by the [engineering team](https://eng.uservoice.co
 * Tai-Lin Chu -- [https://github.com/taylorchu](https://github.com/taylorchu)
 * Sponsored by [UserVoice](https://eng.uservoice.com)
 
-[pkg-go-dev-xgo-badge]: https://pkg.go.dev/badge/github.com/gojek/work
-[pkg-go-dev-xgo]: https://pkg.go.dev/mod/github.com/gojek/work?tab=packages
-[github-workflow-badge]: https://github.com/gojek/work/workflows/build/badge.svg
-[github-workflow]: https://github.com/gojek/work/actions?query=workflow%3Abuild
-[commit-99f237a]: https://github.com/gojek/work/commit/99f237a
-[pull-1]: https://github.com/gojek/work/pull/1
-[pull-2]: https://github.com/gojek/work/pull/2
-[pull-15]: https://github.com/gojek/work/pull/15
-[pull-17]: https://github.com/gojek/work/pull/17
+[pkg-go-dev-xgo-badge]: https://pkg.go.dev/badge/github.com/vin-rmdn/work
+[pkg-go-dev-xgo]: https://pkg.go.dev/mod/github.com/vin-rmdn/work?tab=packages
+[github-workflow-badge]: https://github.com/vin-rmdn/work/workflows/build/badge.svg
+[github-workflow]: https://github.com/vin-rmdn/work/actions?query=workflow%3Abuild
+[commit-99f237a]: https://github.com/vin-rmdn/work/commit/99f237a
+[pull-1]: https://github.com/vin-rmdn/work/pull/1
+[pull-2]: https://github.com/vin-rmdn/work/pull/2
+[pull-15]: https://github.com/vin-rmdn/work/pull/15
+[pull-17]: https://github.com/vin-rmdn/work/pull/17
