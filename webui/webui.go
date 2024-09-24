@@ -17,13 +17,14 @@ import (
 
 // Server implements an HTTP server which exposes a JSON API to view and manage gojek/work items.
 type Server struct {
-	namespace string
-	pool      *redis.Pool
-	client    *work.Client
-	hostPort  string
-	server    *manners.GracefulServer
-	wg        sync.WaitGroup
-	router    *web.Router
+	namespace  string
+	pool       *redis.Pool
+	client     *work.Client
+	hostPort   string
+	server     *manners.GracefulServer
+	wg         sync.WaitGroup
+	router     *web.Router
+	pathPrefix string
 }
 
 type context struct {
@@ -44,12 +45,8 @@ func NewServer(namespace string, pool *redis.Pool, hostPort string, serverOption
 		server = serverOption(server)
 	}
 
-	server.router.Middleware(func(c *context, rw web.ResponseWriter, r *web.Request, next web.NextMiddlewareFunc) {
-		c.Server = server
-		next(rw, r)
-	})
+	server.setupRouter()
 
-	server.router = setupRoutes(server.router)
 	server.server = manners.NewWithServer(&http.Server{Addr: hostPort, Handler: server.router})
 
 	return server

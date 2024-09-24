@@ -505,19 +505,38 @@ func TestWebUIDeadJobsDeleteRetryAll(t *testing.T) {
 }
 
 func TestWebUIAssets(t *testing.T) {
-	pool := newTestPool(t)
-	ns := "testwork"
-	s := NewServer(ns, pool, ":6666")
+	t.Run("router has no prefix", func(t *testing.T) {
+		pool := newTestPool(t)
+		ns := "testwork"
+		s := NewServer(ns, pool, ":6666")
 
-	recorder := httptest.NewRecorder()
-	request, _ := http.NewRequest("GET", "/", nil)
-	s.router.ServeHTTP(recorder, request)
-	body := string(recorder.Body.Bytes())
-	assert.Regexp(t, "html", body)
+		recorder := httptest.NewRecorder()
+		request, _ := http.NewRequest("GET", "/", nil)
+		s.router.ServeHTTP(recorder, request)
+		body := string(recorder.Body.Bytes())
+		assert.Regexp(t, "html", body)
 
-	recorder = httptest.NewRecorder()
-	request, _ = http.NewRequest("GET", "/work.js", nil)
-	s.router.ServeHTTP(recorder, request)
+		recorder = httptest.NewRecorder()
+		request, _ = http.NewRequest("GET", "/work.js", nil)
+		s.router.ServeHTTP(recorder, request)
+	})
+
+	t.Run("router has prefix", func(t *testing.T) {
+		pool := newTestPool(t)
+		ns := "testwork"
+		s := NewServer(ns, pool, ":6666", WithPrefix("/prefix"))
+
+		recorder := httptest.NewRecorder()
+		request, _ := http.NewRequest("GET", "/prefix", nil)
+		s.router.ServeHTTP(recorder, request)
+		body := string(recorder.Body.Bytes())
+		assert.Regexp(t, "html", body)
+		assert.Regexp(t, `src="/prefix/work.js"`, body)
+
+		recorder = httptest.NewRecorder()
+		request, _ = http.NewRequest("GET", "/prefix/work.js", nil)
+		s.router.ServeHTTP(recorder, request)
+	})
 }
 
 func newTestPool(t testing.TB) *redis.Pool {
