@@ -46,17 +46,20 @@ class App extends React.Component {
 render(
   <Router history={hashHistory}>
     <Route path="/" component={App}>
-      <Route path="/processes" component={ () => <Processes busyWorkerURL="./busy_workers" workerPoolURL="./worker_pools" /> } />
-      <Route path="/queues" component={ () => <Queues url="./queues" /> } />
-      <Route path="/retry_jobs" component={ () => <RetryJobs url="./retry_jobs" /> } />
-      <Route path="/scheduled_jobs" component={ () => <ScheduledJobs url="./scheduled_jobs" /> } />
+      <Route path="/processes" component={ () => <Processes
+        busyWorkerURL={`${window.PATH_PREFIX}/busy_workers`}
+        workerPoolURL={`${window.PATH_PREFIX}/worker_pools`}
+      /> } />
+      <Route path="/queues" component={ () => <Queues url={`${window.PATH_PREFIX}/queues`} /> } />
+      <Route path="/retry_jobs" component={ () => <RetryJobs url={`${window.PATH_PREFIX}/retry_jobs`} /> } />
+      <Route path="/scheduled_jobs" component={ () => <ScheduledJobs url={`${window.PATH_PREFIX}/scheduled_jobs`} /> } />
       <Route path="/dead_jobs" component={ () =>
         <DeadJobs
-          fetchURL="./dead_jobs"
-          retryURL="./retry_dead_job"
-          retryAllURL="./retry_all_dead_jobs"
-          deleteURL="./delete_dead_job"
-          deleteAllURL="./delete_all_dead_jobs"
+          fetchURL={`${window.PATH_PREFIX}/dead_jobs`}
+          retryURL={`${window.PATH_PREFIX}/retry_dead_job`}
+          retryAllURL={`${window.PATH_PREFIX}/retry_all_dead_jobs`}
+          deleteURL={`${window.PATH_PREFIX}/delete_dead_job`}
+          deleteAllURL={`${window.PATH_PREFIX}/delete_all_dead_jobs`}
         />
       } />
       <IndexRedirect from="" to="/processes" />
