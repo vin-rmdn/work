@@ -49,7 +49,6 @@ func NewRouter(client *work.Client, opts RouterOptions) *web.Router {
 			return
 		}
 
-		// TODO: check if map works
 		data := struct{ PathPrefix string }{PathPrefix: opts.PathPrefix}
 
 		err = indexTemplate.Execute(rw, data)
