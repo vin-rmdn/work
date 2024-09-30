@@ -6,9 +6,12 @@ import (
 )
 
 type RouterOptions struct {
-	PathPrefix string
+	PathPrefix string // PathPrefix should be suffixed with a slash for the app redirection to work.
 }
 
+// BuildRouter creates a new web.Router with the given work.Client and RouterOptions.
+//
+// Note: PathPrefix should be suffixed with a slash for the app redirection to work.
 func BuildRouter(client *work.Client, opts RouterOptions) *web.Router {
 	ctx := context{client: client}
 	router := web.New(ctx)
