@@ -44,7 +44,7 @@ func TestWebUIPing(t *testing.T) {
 
 	t.Run("with external server", func(t *testing.T) {
 		t.Run("no prefix", func(t *testing.T) {
-			router := NewRouter(work.NewClient(ns, pool), RouterOptions{})
+			router := BuildRouter(work.NewClient(ns, pool), RouterOptions{})
 			testServer := httptest.NewServer(router)
 
 			request, err := http.NewRequest("GET", fmt.Sprintf("%s/ping", testServer.URL), nil)
@@ -57,7 +57,7 @@ func TestWebUIPing(t *testing.T) {
 		})
 
 		t.Run("with prefix", func(t *testing.T) {
-			router := NewRouter(work.NewClient(ns, pool), RouterOptions{PathPrefix: "/api"})
+			router := BuildRouter(work.NewClient(ns, pool), RouterOptions{PathPrefix: "/api"})
 			testServer := httptest.NewServer(router)
 
 			request, err := http.NewRequest("GET", fmt.Sprintf("%s/api/ping", testServer.URL), nil)
@@ -514,7 +514,7 @@ func TestWebUIAssets(t *testing.T) {
 		pool := newTestPool(t)
 		ns := "testwork"
 
-		router := NewRouter(work.NewClient(ns, pool), RouterOptions{PathPrefix: "/prefix"})
+		router := BuildRouter(work.NewClient(ns, pool), RouterOptions{PathPrefix: "/prefix"})
 
 		recorder := httptest.NewRecorder()
 		request, _ := http.NewRequest("GET", "/prefix", nil)
