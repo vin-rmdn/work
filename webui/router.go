@@ -9,7 +9,7 @@ type RouterOptions struct {
 	PathPrefix string
 }
 
-func NewRouter(client *work.Client, opts RouterOptions) *web.Router {
+func BuildRouter(client *work.Client, opts RouterOptions) *web.Router {
 	ctx := context{client: client}
 	router := web.New(ctx)
 

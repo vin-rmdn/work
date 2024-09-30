@@ -24,7 +24,7 @@ type Server struct {
 // NewServer creates and returns a new server. The 'namespace' param is the redis namespace to use. The hostPort param is the address to bind on to expose the API.
 func NewServer(namespace string, pool *redis.Pool, hostPort string) *Server {
 	client := work.NewClient(namespace, pool)
-	router := NewRouter(client, RouterOptions{})
+	router := BuildRouter(client, RouterOptions{})
 
 	return &Server{
 		namespace: namespace,
