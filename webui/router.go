@@ -1,8 +1,6 @@
 package webui
 
 import (
-	"html/template"
-
 	"github.com/gocraft/web"
 	"github.com/gojek/work"
 )
@@ -39,24 +37,7 @@ func NewRouter(client *work.Client, opts RouterOptions) *web.Router {
 	assetRouter := subRouter.Subrouter(ctx, "")
 	assetRouter.Get("/", func(c *context, rw web.ResponseWriter, req *web.Request) {
 		rw.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-		indexTemplate, err := template.New("index.html").
-			Delims("{{", "}}").
-			Parse(string(mustAsset("index.html")))
-		if err != nil {
-			renderError(rw, err)
-
-			return
-		}
-
-		data := struct{ PathPrefix string }{PathPrefix: opts.PathPrefix}
-
-		err = indexTemplate.Execute(rw, data)
-		if err != nil {
-			renderError(rw, err)
-
-			return
-		}
+		_, _ = rw.Write(mustAsset("index.html"))
 	})
 	assetRouter.Get("/work.js", func(c *context, rw web.ResponseWriter, req *web.Request) {
 		rw.Header().Set("Content-Type", "application/javascript; charset=utf-8")
