@@ -49,7 +49,7 @@ func TestDeadPoolReaper(t *testing.T) {
 
 	// Without this, the assertion for deadPools fails on GitHub CI. Could have
 	// something to do with in-memory redis instance.
-	time.Sleep(10*time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Test getting dead pool
 	reaper := newDeadPoolReaper(ns, pool, []string{})
@@ -215,7 +215,7 @@ func TestDeadPoolReaperNoJobTypes(t *testing.T) {
 
 	// Without this, the assertion for deadPools fails on GitHub CI. Could have
 	// something to do with in-memory redis instance.
-	time.Sleep(10*time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Test getting dead pool
 	reaper := newDeadPoolReaper(ns, pool, []string{})

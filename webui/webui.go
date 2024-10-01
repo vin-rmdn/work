@@ -5,12 +5,32 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
-	"github.com/gocraft/web"
+	"github.com/braintree/manners"
 	"github.com/gojek/work"
 	"github.com/gojek/work/webui/internal/assets"
+	"github.com/gomodule/redigo/redis"
 )
+
+// Server implements an HTTP server which exposes a JSON API to view and manage gojek/work items.
+type Server struct {
+	server *manners.GracefulServer
+	wg     sync.WaitGroup
+}
+
+type context struct {
+	client *work.Client
+}
+
+// NewServer creates and returns a new server. The 'namespace' param is the redis namespace to use. The hostPort param is the address to bind on to expose the API.
+func NewServer(namespace string, pool *redis.Pool, hostPort string) *Server {
+	client := work.NewClient(namespace, pool)
+	return &Server{
+		server: manners.NewWithServer(&http.Server{Addr: hostPort, Handler: NewHandler(client)}),
+	}
+}
 
 func mustAsset(name string) []byte {
 	b, err := assets.Asset(name)
@@ -20,25 +40,37 @@ func mustAsset(name string) []byte {
 	return b
 }
 
-type context struct {
-	client *work.Client
+// Start starts the server listening for requests on the hostPort specified in NewServer.
+func (w *Server) Start() {
+	w.wg.Add(1)
+	go func(w *Server) {
+		_ = w.server.ListenAndServe()
+
+		w.wg.Done()
+	}(w)
 }
 
-func (c *context) ping(rw web.ResponseWriter, _ *web.Request) {
+// Stop stops the server and blocks until it has finished.
+func (w *Server) Stop() {
+	w.server.Close()
+	w.wg.Wait()
+}
+
+func (c *context) ping(rw http.ResponseWriter, _ *http.Request) {
 	render(rw, map[string]string{"ping": "pong", "current_time": time.Now().Format(time.RFC3339)}, nil)
 }
 
-func (c *context) queues(rw web.ResponseWriter, _ *web.Request) {
+func (c *context) queues(rw http.ResponseWriter, _ *http.Request) {
 	response, err := c.client.Queues()
 	render(rw, response, err)
 }
 
-func (c *context) workerPools(rw web.ResponseWriter, _ *web.Request) {
+func (c *context) workerPools(rw http.ResponseWriter, _ *http.Request) {
 	response, err := c.client.WorkerPoolHeartbeats()
 	render(rw, response, err)
 }
 
-func (c *context) busyWorkers(rw web.ResponseWriter, _ *web.Request) {
+func (c *context) busyWorkers(rw http.ResponseWriter, _ *http.Request) {
 	observations, err := c.client.WorkerObservations()
 	if err != nil {
 		renderError(rw, err)
@@ -55,7 +87,7 @@ func (c *context) busyWorkers(rw web.ResponseWriter, _ *web.Request) {
 	render(rw, busyObservations, err)
 }
 
-func (c *context) retryJobs(rw web.ResponseWriter, r *web.Request) {
+func (c *context) retryJobs(rw http.ResponseWriter, r *http.Request) {
 	page, err := parsePage(r)
 	if err != nil {
 		renderError(rw, err)
@@ -76,7 +108,7 @@ func (c *context) retryJobs(rw web.ResponseWriter, r *web.Request) {
 	render(rw, response, err)
 }
 
-func (c *context) scheduledJobs(rw web.ResponseWriter, r *web.Request) {
+func (c *context) scheduledJobs(rw http.ResponseWriter, r *http.Request) {
 	page, err := parsePage(r)
 	if err != nil {
 		renderError(rw, err)
@@ -97,7 +129,7 @@ func (c *context) scheduledJobs(rw web.ResponseWriter, r *web.Request) {
 	render(rw, response, err)
 }
 
-func (c *context) deadJobs(rw web.ResponseWriter, r *web.Request) {
+func (c *context) deadJobs(rw http.ResponseWriter, r *http.Request) {
 	page, err := parsePage(r)
 	if err != nil {
 		renderError(rw, err)
@@ -118,41 +150,51 @@ func (c *context) deadJobs(rw web.ResponseWriter, r *web.Request) {
 	render(rw, response, err)
 }
 
-func (c *context) deleteDeadJob(rw web.ResponseWriter, r *web.Request) {
-	diedAt, err := strconv.ParseInt(r.PathParams["died_at"], 10, 64)
+func (c *context) deleteDeadJob(rw http.ResponseWriter, r *http.Request) {
+	diedAt, err := strconv.ParseInt(r.PathValue("died_at"), 10, 64)
 	if err != nil {
 		renderError(rw, err)
 		return
 	}
 
-	err = c.client.DeleteDeadJob(diedAt, r.PathParams["job_id"])
+	err = c.client.DeleteDeadJob(diedAt, r.PathValue("job_id"))
 
 	render(rw, map[string]string{"status": "ok"}, err)
 }
 
-func (c *context) retryDeadJob(rw web.ResponseWriter, r *web.Request) {
-	diedAt, err := strconv.ParseInt(r.PathParams["died_at"], 10, 64)
+func (c *context) retryDeadJob(rw http.ResponseWriter, r *http.Request) {
+	diedAt, err := strconv.ParseInt(r.PathValue("died_at"), 10, 64)
 	if err != nil {
 		renderError(rw, err)
 		return
 	}
 
-	err = c.client.RetryDeadJob(diedAt, r.PathParams["job_id"])
+	err = c.client.RetryDeadJob(diedAt, r.PathValue("job_id"))
 
 	render(rw, map[string]string{"status": "ok"}, err)
 }
 
-func (c *context) deleteAllDeadJobs(rw web.ResponseWriter, r *web.Request) {
+func (c *context) deleteAllDeadJobs(rw http.ResponseWriter, _ *http.Request) {
 	err := c.client.DeleteAllDeadJobs()
 	render(rw, map[string]string{"status": "ok"}, err)
 }
 
-func (c *context) retryAllDeadJobs(rw web.ResponseWriter, r *web.Request) {
+func (c *context) retryAllDeadJobs(rw http.ResponseWriter, _ *http.Request) {
 	err := c.client.RetryAllDeadJobs()
 	render(rw, map[string]string{"status": "ok"}, err)
 }
 
-func render(rw web.ResponseWriter, jsonable interface{}, err error) {
+func (c *context) indexPage(rw http.ResponseWriter, _ *http.Request) {
+	rw.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = rw.Write(mustAsset("index.html"))
+}
+
+func (c *context) workJS(rw http.ResponseWriter, _ *http.Request) {
+	rw.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	_, _ = rw.Write(mustAsset("work.js"))
+}
+
+func render(rw http.ResponseWriter, jsonable interface{}, err error) {
 	if err != nil {
 		renderError(rw, err)
 		return
@@ -163,15 +205,17 @@ func render(rw web.ResponseWriter, jsonable interface{}, err error) {
 		renderError(rw, err)
 		return
 	}
-	rw.Write(jsonData)
+	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = rw.Write(jsonData)
 }
 
 func renderError(rw http.ResponseWriter, err error) {
+	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
 	rw.WriteHeader(500)
-	fmt.Fprintf(rw, `{"error": "%s"}`, err.Error())
+	_, _ = fmt.Fprintf(rw, `{"error": "%s"}`, err.Error())
 }
 
-func parsePage(r *web.Request) (uint, error) {
+func parsePage(r *http.Request) (uint, error) {
 	err := r.ParseForm()
 	if err != nil {
 		return 0, err
