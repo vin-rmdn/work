@@ -5,54 +5,55 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/gojek/work"
 	"github.com/gomodule/redigo/redis"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-type TestWebUIServerSuite struct {
+type TestWebUIHandlerSuite struct {
 	suite.Suite
 
-	ns       string
-	pool     *redis.Pool
-	server   *Server
-	enqueuer *work.Enqueuer
+	ns        string
+	pool      *redis.Pool
+	server    *httptest.Server
+	enqueuer  *work.Enqueuer
+	mountPath string
 }
 
-func (s *TestWebUIServerSuite) SetupSuite() {
+func (s *TestWebUIHandlerSuite) SetupSuite() {
 	s.pool = newTestPool(s.T())
 	s.ns = "work"
+	s.mountPath = "/workerui"
 
-	s.server = NewServer(s.ns, s.pool, ":6666")
-	s.server.Start()
+	handler := NewHandler(work.NewClient(s.ns, s.pool))
+	mux := http.NewServeMux()
+	mux.Handle(s.mountPath+"/", http.StripPrefix("/workerui", handler))
+	s.server = httptest.NewServer(mux)
 
 	s.enqueuer = work.NewEnqueuer(s.ns, s.pool)
 }
 
-func (s *TestWebUIServerSuite) TearDownSuite() {
-	s.server.Stop()
-}
-
-func (s *TestWebUIServerSuite) SetupTest() {
+func (s *TestWebUIHandlerSuite) SetupTest() {
 	cleanKeyspace(s.ns, s.pool)
 }
 
-func TestNewServer(t *testing.T) {
-	suite.Run(t, new(TestWebUIServerSuite))
+func (s *TestWebUIHandlerSuite) pathPrefix() string {
+	return s.server.URL + s.mountPath
 }
 
-type TestContext struct{}
+func TestNewHTTPHandler(t *testing.T) {
+	suite.Run(t, new(TestWebUIHandlerSuite))
+}
 
-func (s *TestWebUIServerSuite) TestPing() {
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/ping", nil)
+func (s *TestWebUIHandlerSuite) TestPing() {
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/ping", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 
@@ -62,7 +63,7 @@ func (s *TestWebUIServerSuite) TestPing() {
 	s.Equal("pong", res["ping"])
 }
 
-func (s *TestWebUIServerSuite) TestQueues() {
+func (s *TestWebUIHandlerSuite) TestQueues() {
 	enqueuer := s.enqueuer
 	_, err := enqueuer.Enqueue("wat", nil)
 	s.NoError(err)
@@ -93,9 +94,9 @@ func (s *TestWebUIServerSuite) TestQueues() {
 	enqueuer.Enqueue("foo", nil)
 	enqueuer.Enqueue("zaz", nil)
 
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/queues", nil)
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/queues", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 
@@ -112,7 +113,7 @@ func (s *TestWebUIServerSuite) TestQueues() {
 	s.EqualValues(0, foomap["latency"])
 }
 
-func (s *TestWebUIServerSuite) TestWorkerPools() {
+func (s *TestWebUIHandlerSuite) TestWorkerPools() {
 
 	wp := work.NewWorkerPool(TestContext{}, 10, s.ns, s.pool)
 	wp.Job("wat", func(job *work.Job) error { return nil })
@@ -128,9 +129,9 @@ func (s *TestWebUIServerSuite) TestWorkerPools() {
 
 	time.Sleep(20 * time.Millisecond)
 
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/worker_pools", nil)
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/worker_pools", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 
@@ -146,7 +147,7 @@ func (s *TestWebUIServerSuite) TestWorkerPools() {
 	// NOTE: WorkerPoolStatus is tested elsewhere.
 }
 
-func (s *TestWebUIServerSuite) TestBusyWorkers() {
+func (s *TestWebUIHandlerSuite) TestBusyWorkers() {
 
 	// Keep a job in the in-progress state without using sleeps
 	wgroup := sync.WaitGroup{}
@@ -168,9 +169,9 @@ func (s *TestWebUIServerSuite) TestBusyWorkers() {
 
 	time.Sleep(10 * time.Millisecond)
 
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/busy_workers", nil)
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/busy_workers", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 
@@ -187,9 +188,9 @@ func (s *TestWebUIServerSuite) TestBusyWorkers() {
 	wgroup2.Wait()
 	time.Sleep(5 * time.Millisecond) // need to let obsever process
 
-	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/busy_workers", nil)
+	req, err = http.NewRequest(http.MethodGet, s.pathPrefix()+"/busy_workers", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	wgroup.Done()
 	s.Equal(200, resp.StatusCode)
@@ -205,7 +206,7 @@ func (s *TestWebUIServerSuite) TestBusyWorkers() {
 	}
 }
 
-func (s *TestWebUIServerSuite) TestRetryJobs() {
+func (s *TestWebUIHandlerSuite) TestRetryJobs() {
 
 	enqueuer := s.enqueuer
 	_, err := enqueuer.Enqueue("wat", nil)
@@ -219,9 +220,9 @@ func (s *TestWebUIServerSuite) TestRetryJobs() {
 	wp.Drain()
 	wp.Stop()
 
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/retry_jobs", nil)
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/retry_jobs", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	var res struct {
@@ -244,14 +245,14 @@ func (s *TestWebUIServerSuite) TestRetryJobs() {
 	}
 }
 
-func (s *TestWebUIServerSuite) TestScheduledJobs() {
+func (s *TestWebUIHandlerSuite) TestScheduledJobs() {
 	enqueuer := s.enqueuer
 	_, err := enqueuer.EnqueueIn("watter", 1, nil)
 	s.Nil(err)
 
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/scheduled_jobs", nil)
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/scheduled_jobs", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	var res struct {
@@ -272,7 +273,7 @@ func (s *TestWebUIServerSuite) TestScheduledJobs() {
 	}
 }
 
-func (s *TestWebUIServerSuite) TestDeadJobs() {
+func (s *TestWebUIHandlerSuite) TestDeadJobs() {
 
 	enqueuer := s.enqueuer
 	_, err := enqueuer.Enqueue("wat", nil)
@@ -287,9 +288,9 @@ func (s *TestWebUIServerSuite) TestDeadJobs() {
 	wp.Drain()
 	wp.Stop()
 
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/dead_jobs", nil)
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/dead_jobs", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	var res struct {
@@ -320,22 +321,22 @@ func (s *TestWebUIServerSuite) TestDeadJobs() {
 	}
 
 	// Ok, now let's retry one and delete one.
-	req, err = http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:6666/delete_dead_job/%d/%s", diedAt0, id0), nil)
+	req, err = http.NewRequest(http.MethodPost, fmt.Sprintf(s.pathPrefix()+"/delete_dead_job/%d/%s", diedAt0, id0), nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 
-	req, err = http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:6666/retry_dead_job/%d/%s", diedAt1, id1), nil)
+	req, err = http.NewRequest(http.MethodPost, fmt.Sprintf(s.pathPrefix()+"/retry_dead_job/%d/%s", diedAt1, id1), nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 
 	// Make sure dead queue is empty
-	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/dead_jobs", nil)
+	req, err = http.NewRequest(http.MethodGet, s.pathPrefix()+"/dead_jobs", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	err = json.NewDecoder(resp.Body).Decode(&res)
@@ -343,9 +344,9 @@ func (s *TestWebUIServerSuite) TestDeadJobs() {
 	s.EqualValues(0, res.Count)
 
 	// Make sure the "wat" queue has 1 item in it
-	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/queues", nil)
+	req, err = http.NewRequest(http.MethodGet, s.pathPrefix()+"/queues", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	var queueRes []struct {
@@ -360,7 +361,7 @@ func (s *TestWebUIServerSuite) TestDeadJobs() {
 	}
 }
 
-func (s *TestWebUIServerSuite) TestDeadJobsDeleteRetryAll() {
+func (s *TestWebUIHandlerSuite) TestDeadJobsDeleteRetryAll() {
 
 	enqueuer := s.enqueuer
 	_, err := enqueuer.Enqueue("wat", nil)
@@ -375,9 +376,9 @@ func (s *TestWebUIServerSuite) TestDeadJobsDeleteRetryAll() {
 	wp.Drain()
 	wp.Stop()
 
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/dead_jobs", nil)
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/dead_jobs", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	var res struct {
@@ -396,16 +397,16 @@ func (s *TestWebUIServerSuite) TestDeadJobsDeleteRetryAll() {
 	s.Equal(2, len(res.Jobs))
 
 	// Ok, now let's retry all
-	req, err = http.NewRequest(http.MethodPost, "http://127.0.0.1:6666/retry_all_dead_jobs", nil)
+	req, err = http.NewRequest(http.MethodPost, s.pathPrefix()+"/retry_all_dead_jobs", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 
 	// Make sure dead queue is empty
-	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/dead_jobs", nil)
+	req, err = http.NewRequest(http.MethodGet, s.pathPrefix()+"/dead_jobs", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	err = json.NewDecoder(resp.Body).Decode(&res)
@@ -413,9 +414,9 @@ func (s *TestWebUIServerSuite) TestDeadJobsDeleteRetryAll() {
 	s.EqualValues(0, res.Count)
 
 	// Make sure the "wat" queue has 2 items in it
-	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/queues", nil)
+	req, err = http.NewRequest(http.MethodGet, s.pathPrefix()+"/queues", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	var queueRes []struct {
@@ -436,9 +437,9 @@ func (s *TestWebUIServerSuite) TestDeadJobsDeleteRetryAll() {
 	wp.Stop()
 
 	// Make sure we have 2 dead things again:
-	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/dead_jobs", nil)
+	req, err = http.NewRequest(http.MethodGet, s.pathPrefix()+"/dead_jobs", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	err = json.NewDecoder(resp.Body).Decode(&res)
@@ -446,16 +447,16 @@ func (s *TestWebUIServerSuite) TestDeadJobsDeleteRetryAll() {
 	s.EqualValues(2, res.Count)
 
 	// Now delete them:
-	req, err = http.NewRequest(http.MethodPost, "http://127.0.0.1:6666/delete_all_dead_jobs", nil)
+	req, err = http.NewRequest(http.MethodPost, s.pathPrefix()+"/delete_all_dead_jobs", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 
 	// Make sure dead queue is empty
-	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/dead_jobs", nil)
+	req, err = http.NewRequest(http.MethodGet, s.pathPrefix()+"/dead_jobs", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
 	s.Equal(200, resp.StatusCode)
 	err = json.NewDecoder(resp.Body).Decode(&res)
@@ -463,49 +464,17 @@ func (s *TestWebUIServerSuite) TestDeadJobsDeleteRetryAll() {
 	s.EqualValues(0, res.Count)
 }
 
-func (s *TestWebUIServerSuite) TestAssets() {
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/", nil)
+func (s *TestWebUIHandlerSuite) TestAssets() {
+	req, err := http.NewRequest(http.MethodGet, s.pathPrefix()+"/", nil)
 	s.NoError(err)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := s.server.Client().Do(req)
 	s.NoError(err)
 	bytes, err := io.ReadAll(resp.Body)
 	s.NoError(err)
 	s.Regexp("html", string(bytes))
 
-	req, err = http.NewRequest(http.MethodGet, "http://127.0.0.1:6666/work.js", nil)
+	req, err = http.NewRequest(http.MethodGet, s.pathPrefix()+"/work.js", nil)
 	s.NoError(err)
-	resp, err = http.DefaultClient.Do(req)
+	resp, err = s.server.Client().Do(req)
 	s.NoError(err)
-}
-
-func newTestPool(t testing.TB) *redis.Pool {
-	t.Helper()
-
-	s, err := miniredis.Run()
-	assert.NoError(t, err)
-	t.Cleanup(s.Close)
-	return &redis.Pool{
-		MaxActive:   3,
-		MaxIdle:     3,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			return redis.Dial("tcp", s.Addr())
-		},
-		Wait: true,
-	}
-}
-
-func cleanKeyspace(namespace string, pool *redis.Pool) {
-	conn := pool.Get()
-	defer conn.Close()
-
-	keys, err := redis.Strings(conn.Do("KEYS", namespace+"*"))
-	if err != nil {
-		panic("could not get keys: " + err.Error())
-	}
-	for _, k := range keys {
-		if _, err := conn.Do("DEL", k); err != nil {
-			panic("could not del: " + err.Error())
-		}
-	}
 }
